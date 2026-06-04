@@ -1,4 +1,4 @@
-# Hybrid Pulse Generation + Oscilloscope Platform
+# Hybrid Pulse Generation + Oscilloscope Platform (Arduino-Based Programmable Pulse Generator and Signal Analysis System)
 
 Professional modular instrumentation platform using Python, PyQt5, PyQtGraph, SEELab/eyes17, Arduino UNO, MOSFET switching hardware, and external analog electronics.
 
