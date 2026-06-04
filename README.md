@@ -1,64 +1,110 @@
-# Hybrid Pulse Generation + Oscilloscope Platform (Arduino-Based Programmable Pulse Generator and Signal Analysis System)
+# Hybrid Pulse Generation and Signal Analysis Platform
 
-Professional modular instrumentation platform using Python, PyQt5, PyQtGraph, SEELab/eyes17, Arduino UNO, MOSFET switching hardware, and external analog electronics.
+A modular instrumentation platform developed during my Research Internship at the University of Hyderabad. The system combines Arduino UNO, Python, SEELab (eyes17), and external electronics to generate, control, visualize, and analyze electrical pulse signals in real time.
 
-## Core Architecture
+## Project Overview
 
-- Python GUI: control, plotting, analysis, logging, and experiment coordination.
-- SEELab: A1/A2 acquisition, PV1/PV2 voltage control, FFT source data, and analog measurements.
-- Arduino UNO: hardware-timed gate pulses on D9/Timer1, pulse trains, burst timing, and PWM timing.
-- MOSFET stage: Arduino controls gate timing, SEELab PV1 controls real analog pulse amplitude.
+This project was developed to provide an affordable and flexible platform for pulse generation, waveform visualization, and signal analysis. It integrates embedded systems, instrumentation, signal processing, and software development into a single experimental setup.
 
-## Main Features
+## Key Features
 
-- Dual-channel oscilloscope with A1, A2, and A1-A2 differential display.
-- FFT analysis and THD display.
-- Persistent oscilloscope PiP visible while using sub-pages.
-- Arduino pulse train and burst control.
-- Timer1 fast burst mode on D9 / OC1A.
-- Incremental PV1 amplitude pulse train mode.
-- CSV waveform and FFT export.
-- Experiment logging.
+* Programmable pulse train generation
+* Burst pulse generation
+* Variable pulse width and timing control
+* Variable-amplitude pulse generation using SEELab PV1
+* Real-time dual-channel oscilloscope
+* FFT and frequency-domain analysis
+* Differential signal measurement (A1-A2)
+* Waveform and FFT data export to CSV
+* Experiment logging and data recording
+* Persistent oscilloscope view across application modules
 
-## Hardware Principle
+## Technologies Used
 
-Arduino D9 controls the MOSFET gate timing.
+### Software
 
-SEELab PV1 controls the real pulse amplitude.
+* Python
+* PyQt5
+* PyQtGraph
+* Serial Communication
 
-SEELab A1 observes the pulse output.
+### Hardware
 
-SEELab A2 observes load/sense/current waveform.
+* Arduino UNO
+* SEELab (eyes17)
+* MOSFET Switching Circuit
+* Analog Signal Conditioning Circuits
 
-## Run
+## System Architecture
 
-```powershell
+The platform uses a hybrid architecture:
+
+* Arduino UNO generates pulse timing, pulse trains, burst signals, and PWM-based control signals.
+* SEELab provides analog voltage generation, signal acquisition, and measurement capabilities.
+* Python GUI coordinates hardware control, data acquisition, visualization, and signal analysis.
+* MOSFET switching circuitry combines timing control and analog voltage control to generate programmable pulse outputs.
+
+## Applications
+
+* Embedded Systems Learning
+* Instrumentation Experiments
+* Signal Processing Education
+* Pulse Generation Research
+* Laboratory Demonstrations
+* Electronics and Control System Experiments
+
+## Skills Demonstrated
+
+* Embedded Systems Development
+* Arduino Programming
+* Python Application Development
+* Hardware-Software Integration
+* Signal Processing
+* Oscilloscope and Measurement Systems
+* Data Acquisition Systems
+* Electronic Circuit Design
+* Research and Experimentation
+
+## Demonstration Videos and Images
+
+Project Photos and Demonstrations:
+
+https://drive.google.com/drive/folders/17KRl3tyDmtp5uRdixyRHKKvt-OUXEkjE
+
+## Repository Structure
+
+```text
+main_scope.py                 Main GUI Application
+arduino_pulse_engine/         Arduino Firmware
+waveform_exports/             Exported CSV Data
+experiment_logs/              Experiment Records
+```
+
+## How to Run
+
+1. Upload the Arduino firmware.
+2. Connect Arduino UNO and SEELab.
+3. Launch the Python application.
+
+```bash
 python main_scope.py
 ```
 
-The application opens full screen by default.
+4. Select the Arduino COM port.
+5. Connect and verify hardware status.
+6. Generate pulse trains, burst pulses, or variable-amplitude pulse signals.
 
-## Arduino Firmware
+## Safety Notes
 
-Upload:
+* Operate SEELab PV1 within 0–5 V.
+* Do not connect PV1 directly to Arduino pins.
+* Use appropriate MOSFET switching and protection circuitry.
+* Use A1/A2 inputs only for measurement purposes.
 
-```text
-arduino_pulse_engine/arduino_pulse_engine.ino
-```
+## Author
 
-Arduino serial baud rate:
+Ramu Madada
 
-```text
-115200
-```
+Research Internship – University of Hyderabad (2026)
 
-After upload, open the GUI, select the Arduino COM port, connect, press `Status`, then run pulse train, burst, fast burst, or incremental PV1 pulse mode.
-
-## Safety
-
-- Keep PV1 between 0 V and 5 V.
-- Do not connect PV1 directly to Arduino pins.
-- Use MOSFET switching and protection resistors.
-- Arduino D9 is for gate timing only.
-- SEELab PV1 is the real amplitude source.
-- SEELab A1/A2/A3 are measurement inputs only.
+Electrical and Electronics Engineering
