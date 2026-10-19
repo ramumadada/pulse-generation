@@ -1,131 +1,139 @@
-# Hybrid Pulse Generation and Signal Analysis Platform
+# Pulse Generation & Signal Analysis Platform
 
-A modular instrumentation platform developed during my Research Internship at the University of Hyderabad. The system combines Arduino UNO, Python, SEELab (eyes17), and external electronics to generate, control, visualize, and analyze electrical pulse signals in real time.
+A modular instrumentation platform developed during a Research Internship at the
+University of Hyderabad. The system uses an **Arduino UNO** as the sole hardware
+controller — generating pulses, acquiring analog signals via the built-in 10-bit ADC,
+and outputting bias voltages via PWM — coordinated by a Python/PyQt5 GUI.
 
-## Project Overview
+---
 
-This project was developed to provide an affordable and flexible platform for pulse generation, waveform visualization, and signal analysis. It integrates embedded systems, instrumentation, signal processing, and software development into a single experimental setup.
+## Screenshots & Demo
 
-## Key Features
+| Basic Setup | Oscilloscope View | IV Analyzer |
+|:-----------:|:-----------------:|:-----------:|
+| ![basic-1](https://drive.google.com/uc?export=view&id=basic-1) | ![basic-2](https://drive.google.com/uc?export=view&id=basic-2) | ![basic-3](https://drive.google.com/uc?export=view&id=basic-3) |
 
-* Programmable pulse train generation
-* Burst pulse generation
-* Variable pulse width and timing control
-* Variable-amplitude pulse generation using SEELab PV1
-* Real-time dual-channel oscilloscope
-* FFT and frequency-domain analysis
-* Differential signal measurement (A1-A2)
-* Waveform and FFT data export to CSV
-* Experiment logging and data recording
-* Persistent oscilloscope view across application modules
+> Full image gallery and interface demo video:
+> **[Google Drive — Pulse_Generation folder](https://drive.google.com/drive/folders/17KRl3tyDmtp5uRdixyRHKKvt-OUXEkjE)**
+>
+> Files: `basic-1.png` · `basic-2.png` · `basic-3.png` · `basic-4.png` · `basic-6.png` · `simulation.png` · `my interface.mp4`
 
-## Technologies Used
+---
 
-### Software
+## Features
 
-* Python
-* PyQt5
-* PyQtGraph
-* Serial Communication
+- Programmable pulse train generation (frequency, duty cycle, count)
+- Burst pulse generation (configurable bursts and pulses per burst)
+- Incremental-amplitude pulse sweeps for memristor / device characterisation
+- Real-time **dual-channel oscilloscope** (A0 & A1)
+- Display trigger (rising / falling edge, adjustable level)
+- FFT with peak detection, harmonic analysis, and THD calculation
+- Differential channel display (A0 − A1)
+- IV sweep analyzer with live voltage/current graph
+- Waveform and FFT export to CSV
+- Experiment logging
+- Bias voltage output via PWM + RC filter on pins 5 & 6
 
-### Hardware
+---
 
-* Arduino UNO
-* SEELab (eyes17)
-* MOSFET Switching Circuit
-* Analog Signal Conditioning Circuits
+## Hardware
 
-## System Architecture
+| Component | Role |
+|-----------|------|
+| Arduino UNO | Pulse generation, ADC sampling (A0/A1), PWM bias voltage |
+| MOSFET switching circuit | Combines Arduino timing + bias voltage into pulse output |
+| RC filter (1 kΩ + 100 µF) | Converts PWM on pin 5/6 to DC bias (0–5 V) |
+| Sense resistor (100 Ω) | Current measurement via A1 voltage divider |
 
-The platform uses a hybrid architecture:
+**Arduino ADC limits:**
+- 10-bit resolution → 0–1023 maps to 0–5 V
+- Maximum reliable sample rate over serial: ~2 kHz (gap ≥ 500 µs)
 
-* Arduino UNO generates pulse timing, pulse trains, burst signals, and PWM-based control signals.
-* SEELab provides analog voltage generation, signal acquisition, and measurement capabilities.
-* Python GUI coordinates hardware control, data acquisition, visualization, and signal analysis.
-* MOSFET switching circuitry combines timing control and analog voltage control to generate programmable pulse outputs.
+---
 
-## Applications
+## Software Stack
 
-* Embedded Systems Learning
-* Instrumentation Experiments
-* Signal Processing Education
-* Pulse Generation Research
-* Laboratory Demonstrations
-* Electronics and Control System Experiments
+| Layer | Technology |
+|-------|-----------|
+| GUI | Python 3, PyQt5, PyQtGraph |
+| Serial | pyserial |
+| Signal processing | NumPy, SciPy (`butter`, `lfilter`, `savgol_filter`) |
+| Firmware | Arduino C++ (`.ino`) |
+| CI | GitHub Actions — ruff lint |
 
-## Skills Demonstrated
-
-* Embedded Systems Development
-* Arduino Programming
-* Python Application Development
-* Hardware-Software Integration
-* Signal Processing
-* Oscilloscope and Measurement Systems
-* Data Acquisition Systems
-* Electronic Circuit Design
-* Research and Experimentation
-
-## Demonstration Videos and Images
-
-Project Photos and Demonstrations:
-
-https://drive.google.com/drive/folders/17KRl3tyDmtp5uRdixyRHKKvt-OUXEkjE
+---
 
 ## Repository Structure
 
-```text
-main_scope.py                 Main GUI Application
-arduino_pulse_engine/         Arduino Firmware
-waveform_data/                Exported CSV Waveform Data
-fft_data/                     Exported FFT CSV Data
-experiment_logs/              Experiment Records
-screenshots/                  Saved oscilloscope images
 ```
+main_scope.py                 Main GUI — oscilloscope, FFT, pulse controls
+iv_module.py                  IV sweep analyser window
+arduino_pulse_engine/
+  arduino_pulse_engine.ino    Arduino firmware
+arduino_serial_module.py      Serial protocol layer (commands, ADC, PWM)
+acquisition_module.py         ADC capture — SAMPLE command → NumPy arrays
+trigger_module.py             Display trigger and scope engine
+pulse_train_module.py         Pulse packet builders
+fft_module.py                 FFT, THD, harmonic detection
+signal_conditioning_module.py Low-pass filter, moving average
+save_module.py                CSV and log export
+requirements.txt              Python dependencies (pinned)
+CHANGES.md                    Full changelog with reasons for every change
+legacy/                       Archived legacy GUI code
+```
+
+---
 
 ## Installation
 
-### 1. Install Python dependencies
+### 1. Python dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-### 2. Install eyes17 (SEELab — not on PyPI)
+### 2. Arduino firmware
 
-eyes17 must be installed separately. Download the package from the SEELab
-website or your lab's distribution and run:
+Open `arduino_pulse_engine/arduino_pulse_engine.ino` in the Arduino IDE
+and upload it to your UNO.
 
-```bash
-pip install eyes17-<version>.whl
-```
+### 3. Hardware wiring
 
-Refer to `HARDWARE_SETUP.md` for the exact version and download link.
+| Arduino pin | Connection |
+|-------------|-----------|
+| Pin 9 | Pulse output → MOSFET gate |
+| Pin 5 | PWM bias 1 → RC filter → device |
+| Pin 6 | PWM bias 2 → RC filter → device |
+| A0 | Signal input channel 1 |
+| A1 | Signal input / sense resistor channel 2 |
 
-## How to Run
+---
 
-1. Upload the Arduino firmware from `arduino_pulse_engine/`.
-2. Connect Arduino UNO and SEELab to USB.
-3. Launch the Python application.
+## Running the Application
 
 ```bash
 python main_scope.py
 ```
 
-4. Select the Arduino COM port.
-5. Connect and verify hardware status.
-6. Generate pulse trains, burst pulses, or variable-amplitude pulse signals.
+1. Select the Arduino COM port from the dropdown.
+2. Click **Connect** — the app waits for the firmware ready token automatically.
+3. Use the pulse controls to configure and start pulse generation.
+4. The oscilloscope and FFT update in real time.
+5. Open **IV Analyzer** from the menu for voltage-sweep experiments.
+
+---
 
 ## Safety Notes
 
-* Operate SEELab PV1 within 0–5 V.
-* Do not connect PV1 directly to Arduino pins.
-* Use appropriate MOSFET switching and protection circuitry.
-* Use A1/A2 inputs only for measurement purposes.
+- Keep PWM bias outputs within 0–5 V (Arduino Vcc reference).
+- Never connect Arduino pins directly to voltages above 5 V.
+- Use appropriate MOSFET gate resistors and protection diodes.
+- A0/A1 are measurement inputs — connect through a voltage divider if the signal exceeds 5 V.
+
+---
 
 ## Author
 
-Ramu Madada
-
-Research Internship – University of Hyderabad (2026)
-
+**Ramu Madada**  
+Research Internship — University of Hyderabad, 2026  
 Electrical and Electronics Engineering
