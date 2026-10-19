@@ -1,0 +1,48 @@
+# Arduino Serial Protocol
+
+Baud rate:
+
+```text
+115200
+```
+
+## Health
+
+```text
+PING TOKEN=PGEE
+STATUS
+```
+
+## Digital Pulse Train
+
+```text
+CONFIG_PULSE PIN=9 HIGH_US=1000 LOW_US=1000 COUNT=10 IDLE=0
+START_PULSE
+STOP_PULSE
+```
+
+## Digital Burst Packets
+
+```text
+CONFIG_BURST PIN=9 HIGH_US=1000 LOW_US=1000 PULSES=10 PACKETS=5 DELAY_MS=100
+START_BURST
+STOP_BURST
+```
+
+## Timer1 Fast Burst on D9 / OC1A
+
+```text
+CONFIG_FAST_BURST FREQ_HZ=2000000 DUTY=33 CYCLES=100 OFF_US=500 BURSTS=0
+START_FAST_BURST
+STOP_FAST_BURST
+```
+
+`BURSTS=0` means continuous repeating bursts.
+
+## PWM
+
+```text
+CONFIG_PWM PIN=9 FREQ_HZ=1000 DUTY=50 DURATION_MS=0
+START_PWM
+STOP_PWM
+```

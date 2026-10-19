@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.venv/
+venv/
+
+screenshots/*.png
+waveform_data/*.csv
+fft_data/*.csv
+experiment_logs/*.txt
+
+!screenshots/.gitkeep
+!waveform_data/.gitkeep
+!fft_data/.gitkeep
+!experiment_logs/.gitkeep
