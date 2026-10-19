@@ -81,16 +81,14 @@ PIN_LIMITS = {
 
 class UltraScope(QWidget):
 
-    def __init__(self, device):
+    def __init__(self):
         """
-        WHY CHANGED: device (the eyes17 SEELab object) was a module-level
-        global, which meant importing this file triggered hardware connection
-        and sys.exit() on failure. Passing device as a parameter keeps
-        hardware setup in __main__ where it belongs and allows the class to
-        be instantiated in tests without real hardware.
+        WHY CHANGED (SEELab removal): the constructor no longer accepts a
+        device argument. All acquisition and voltage output now goes through
+        self.arduino (ArduinoSerialController) using the new ADC SAMPLE,
+        READ_ADC, and SET_VOLTAGE commands added to the firmware.
         """
         super().__init__()
-        self.device = device
 
         self.setWindowTitle(
             "PROFESSIONAL HYBRID ELECTRONIC INSTRUMENTATION PLATFORM"
@@ -1851,12 +1849,8 @@ class UltraScope(QWidget):
 
             self.incremental_running = False
 
-            try:
-                self.device.set_pv1(0)
-            except Exception:
-                pass
-
             if self.arduino.is_connected() and self.arduino.is_ready():
+                self.arduino.set_voltage_pwm(5, 0.0)
                 self.arduino.stop_fast_burst()
 
             self.warning_label.setText(
@@ -1886,13 +1880,11 @@ class UltraScope(QWidget):
 
                 self.incremental_running = False
 
-                try:
-                    self.device.set_pv1(0)
-                except Exception:
-                    pass
+                if self.arduino.is_connected() and self.arduino.is_ready():
+                    self.arduino.set_voltage_pwm(5, 0.0)
 
                 self.warning_label.setText(
-                    "Incremental PV1 pulse train complete"
+                    "Incremental amplitude sweep complete"
                 )
 
                 self.warning_label.setStyleSheet(
@@ -1907,9 +1899,8 @@ class UltraScope(QWidget):
 
             amplitude = self.incremental_sequence[self.incremental_index]
 
-            self.device.set_pv1(
-                amplitude
-            )
+            if self.arduino.is_connected() and self.arduino.is_ready():
+                self.arduino.set_voltage_pwm(5, float(amplitude))
 
             width_us = max(
                 1,
@@ -2027,17 +2018,18 @@ class UltraScope(QWidget):
             self.duty_display.display(duty)
             self.amp_display.display(amplitude)
 
-            if pin == "SQ1":
-
-                self.device.set_sqr1(freq, duty)
-
-            elif pin == "SQ2":
-
-                self.device.set_sqr2(freq, duty)
-
-            elif pin == "WG":
-
-                self.device.set_wave(freq)
+            # Signal generation now uses Arduino pulse engine.
+            # Route to Arduino: configure and start a continuous PWM output.
+            if self.arduino.is_connected() and self.arduino.is_ready():
+                from arduino_serial_module import ArduinoPWMConfig
+                cfg = ArduinoPWMConfig(
+                    pin=9,
+                    frequency_hz=float(freq),
+                    duty_percent=float(duty),
+                    duration_ms=0,
+                )
+                self.arduino.configure_pwm(cfg)
+                self.arduino.start_pwm()
 
         except Exception as e:
 
@@ -2054,13 +2046,12 @@ class UltraScope(QWidget):
             pv1_voltage = self.pv1_slider.value() / 1000
             pv2_voltage = self.pv2_slider.value() / 1000
 
-            self.device.set_pv1(
-                pv1_voltage
-            )
-
-            self.device.set_pv2(
-                pv2_voltage
-            )
+            # Voltage bias output via Arduino PWM + RC filter.
+            # Pin 5 = PV1 (0–5 V),  Pin 6 = PV2 (0–5 V range, not negative).
+            # Requires R=1kΩ + C=100µF low-pass filter on each pin.
+            if self.arduino.is_connected() and self.arduino.is_ready():
+                self.arduino.set_voltage_pwm(5, pv1_voltage)
+                self.arduino.set_voltage_pwm(6, max(0.0, pv2_voltage))
 
             self.pv1_display.display(
                 pv1_voltage
@@ -2082,7 +2073,7 @@ class UltraScope(QWidget):
 
         trigger_module.update_scope_engine(
             self,
-            self.device
+            self.arduino
         )
 
     # ======================================================
@@ -2204,19 +2195,10 @@ class UltraScope(QWidget):
 # ==========================================================
 
 if __name__ == "__main__":
-    # WHY: QApplication and hardware connection live here so that importing
-    # this module from a test or notebook does not immediately try to connect
-    # hardware and call sys.exit() on failure.
+    # WHY: SEELab (eyes17) removed. All acquisition and voltage output now
+    # goes through Arduino. No external device connection needed at startup —
+    # the user connects Arduino from the Arduino Pulse Engine tab in the GUI.
     app = QApplication(sys.argv)
-
-    try:
-        import eyes17.eyes
-        device = eyes17.eyes.open()
-        print("SEELab Connected Successfully")
-    except Exception as e:
-        print(f"SEELab Connection Error: {e}")
-        sys.exit(1)
-
-    window = UltraScope(device)
+    window = UltraScope()
     window.showMaximized()
     sys.exit(app.exec_())

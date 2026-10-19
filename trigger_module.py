@@ -162,7 +162,7 @@ def update_pip_scope(self, x, y, y2, y_diff):
 # UPDATE SCOPE ENGINE
 # ==========================================================
 
-def update_scope_engine(self, device):
+def update_scope_engine(self, arduino):
 
     try:
 
@@ -178,7 +178,7 @@ def update_scope_engine(self, device):
         # ==================================================
 
         frame = acquisition_module.capture_a1_a2(
-            device,
+            arduino,
             acquisition_module.AcquisitionConfig(
                 samples=self.SAMPLES,
                 time_gap_us=self.TIME_GAP,
@@ -198,8 +198,8 @@ def update_scope_engine(self, device):
         else:
 
             x, y = acquisition_module.capture_single_channel(
-                device,
-                "A1",
+                arduino,
+                "A0",
                 self.SAMPLES,
                 self.TIME_GAP
             )

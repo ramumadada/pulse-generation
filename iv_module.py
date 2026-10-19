@@ -1,16 +1,8 @@
 # ==========================================================
-# QApplication MUST BE FIRST
+# IMPORTS
 # ==========================================================
 
 import sys
-
-from PyQt5.QtWidgets import QApplication
-
-app = QApplication(sys.argv)
-
-# ==========================================================
-# IMPORTS
-# ==========================================================
 
 import time
 import threading
@@ -18,6 +10,7 @@ import numpy as np
 import pyqtgraph as pg
 
 from PyQt5.QtWidgets import (
+    QApplication,
     QWidget,
     QLabel,
     QPushButton,
@@ -25,34 +18,15 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
     QHBoxLayout,
     QGridLayout,
-    QLCDNumber
+    QLCDNumber,
 )
 
 from PyQt5.QtCore import Qt, QTimer
 
-# ==========================================================
-# EYES17
-# ==========================================================
-
-import eyes17.eyes
-
-# ==========================================================
-# CONNECT DEVICE
-# ==========================================================
-
-try:
-
-    device = eyes17.eyes.open()
-
-    print("SEELab Connected")
-
-except Exception as e:
-
-    print("Device opening Error")
-
-    print(e)
-
-    sys.exit()
+# WHY CHANGED: SEELab (eyes17) removed. Arduino handles ADC acquisition via
+# SAMPLE/READ_ADC commands and voltage bias via SET_VOLTAGE (PWM + RC filter).
+import arduino_serial_module
+import acquisition_module
 
 # ==========================================================
 # MAIN WINDOW
@@ -72,9 +46,11 @@ class IVPulseAnalyzer(QWidget):
 
         self.running = False
 
-        self.SAMPLES = 1000
+        self.SAMPLES = 300   # reduced from 1000 — Arduino SAMPLE max is 500
+        self.TIME_GAP = 500  # µs — min reliable gap for Arduino ADC over serial
 
-        self.TIME_GAP = 4
+        # Arduino serial controller — user connects from the IV window COM selector
+        self.arduino = arduino_serial_module.ArduinoSerialController()
 
         self.iv_voltage_data = []
 
@@ -416,34 +392,28 @@ class IVPulseAnalyzer(QWidget):
                 # APPLY VOLTAGE
                 # ==========================================
 
-                device.set_pv1(
-                    voltage
-                )
+                # Set bias voltage via Arduino PWM on pin 5 (0–5 V).
+                # Requires R=1kΩ + C=100µF RC filter on pin 5.
+                if self.arduino.is_connected() and self.arduino.is_ready():
+                    self.arduino.set_voltage_pwm(5, float(voltage))
 
-                # ==========================================
-                # ENABLE PULSE
-                # ==========================================
+                # Enable pulse via Arduino pulse engine
+                if self.arduino.is_connected() and self.arduino.is_ready():
+                    from arduino_serial_module import ArduinoPulsePacket
+                    pkt = ArduinoPulsePacket(
+                        pin=9,
+                        high_time_us=max(1, int(pulse_width * 1_000_000)),
+                        low_time_us=1000,
+                        pulse_count=1,
+                    )
+                    self.arduino.configure_pulse(pkt)
+                    self.arduino.start_pulse()
 
-                device.set_sqr1(
-                    1000,
-                    50
-                )
+                time.sleep(pulse_width)
 
-                time.sleep(
-                    pulse_width
-                )
-
-                # ==========================================
-                # MEASURE
-                # ==========================================
-
-                mem_voltage = device.get_voltage(
-                    'A1'
-                )
-
-                sense_voltage = device.get_voltage(
-                    'A2'
-                )
+                # Measure via Arduino ADC
+                mem_voltage = self.arduino.read_adc_voltage("A0") or 0.0
+                sense_voltage = self.arduino.read_adc_voltage("A1") or 0.0
 
                 # ==========================================
                 # CURRENT
@@ -468,17 +438,11 @@ class IVPulseAnalyzer(QWidget):
                     self.iv_current_data
                 )
 
-                # ==========================================
-                # DISABLE PULSE
-                # ==========================================
+                # Stop pulse output between steps
+                if self.arduino.is_connected() and self.arduino.is_ready():
+                    self.arduino.stop_pwm()
 
-                device.set_state(
-                    SQR1=0
-                )
-
-                time.sleep(
-                    0.05
-                )
+                time.sleep(0.05)
 
                 voltage += step_v
 
@@ -531,12 +495,9 @@ class IVPulseAnalyzer(QWidget):
         self.running = False
 
         try:
-
-            device.set_state(
-                SQR1=0
-            )
-
-        except:
+            if self.arduino.is_connected() and self.arduino.is_ready():
+                self.arduino.stop_pwm()
+        except Exception:
             pass
 
         self.status_label.setText(
@@ -554,40 +515,25 @@ class IVPulseAnalyzer(QWidget):
     def update_scope(self):
 
         try:
-
-            x, y = device.capture1(
-
-                'A1',
-
-                self.SAMPLES,
-
-                self.TIME_GAP
-
+            x, y = acquisition_module.capture_single_channel(
+                self.arduino, "A0", self.SAMPLES, self.TIME_GAP
             )
 
             if x is None or y is None:
-
                 return
 
-            self.scope_curve.setData(
-                x,
-                y
-            )
-
-            self.scope_plot.enableAutoRange(
-                axis='y'
-            )
+            self.scope_curve.setData(x, y)
+            self.scope_plot.enableAutoRange(axis='y')
 
         except Exception as e:
-
             print(e)
 
 # ==========================================================
 # RUN
 # ==========================================================
 
-window = IVPulseAnalyzer()
-
-window.show()
-
-sys.exit(app.exec_())
+if __name__ == "__main__":
+    app = QApplication(sys.argv)
+    window = IVPulseAnalyzer()
+    window.show()
+    sys.exit(app.exec_())

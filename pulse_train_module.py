@@ -29,7 +29,6 @@ def frequency_duty_to_timing_us(frequency, duty):
 
 
 def identical_pulses(
-    device=None,
     pin="SQ1",
     frequency=1000,
     duty=50,
@@ -38,12 +37,7 @@ def identical_pulses(
     arduino_controller=None,
     arduino_pin=9,
 ):
-    """
-    Generate identical pulses through Arduino.
-
-    The device argument is preserved for compatibility with old GUI calls, but
-    it is not used for pulse timing.
-    """
+    """Generate identical pulses through Arduino."""
 
     try:
         if arduino_controller is None:
@@ -72,7 +66,6 @@ def identical_pulses(
 
 
 def incremental_amplitude_pulses(
-    device=None,
     start_voltage=0.5,
     stop_voltage=3.0,
     voltage_step=0.1,
@@ -81,22 +74,17 @@ def incremental_amplitude_pulses(
     arduino_pin=9,
     pulse_width_us=1000,
 ):
-    """
-    Configure a safe incremental-amplitude experiment skeleton.
+    """Configure an incremental-amplitude pulse skeleton.
 
-    PV1 amplitude stepping is not timing-critical, but the pulse itself must be
-    executed by Arduino.  The GUI/automation layer should step PV1 between
-    Arduino pulse packets.
+    Voltage stepping is handled by the GUI layer calling
+    arduino_controller.set_voltage_pwm() between packets.
+    WHY CHANGED: removed device (SEELab) parameter — voltage bias is now
+    provided by Arduino PWM output via set_voltage_pwm().
     """
-
     try:
         if arduino_controller is None:
             print("Arduino controller required for safe incremental pulse timing")
             return False
-
-        if device is not None:
-            safe_voltage = min(max(float(start_voltage), 0.0), 5.0)
-            device.set_pv1(safe_voltage)
 
         packet = ArduinoPulsePacket(
             pin=arduino_pin,
@@ -117,7 +105,6 @@ def incremental_amplitude_pulses(
 
 
 def burst_pulses(
-    device=None,
     burst_count=5,
     pulses_per_burst=10,
     frequency=1000,

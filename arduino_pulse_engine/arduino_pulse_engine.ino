@@ -261,7 +261,93 @@ void handleCommand(String line) {
     return;
   }
 
+  // ----------------------------------------------------------
+  // ADC SAMPLE: stream COUNT samples from one or two analog pins
+  // Usage: SAMPLE CH=A0 COUNT=300 GAP_US=500
+  //        SAMPLE CH=A0,A1 COUNT=300 GAP_US=500
+  // ----------------------------------------------------------
+  if (line.startsWith(F("SAMPLE"))) {
+    String chStr = getValue(line, "CH", "A0");
+    int sCount = constrain(getLong(line, "COUNT", 100), 1, 500);
+    unsigned long sGapUs = max(100UL, getUnsigned(line, "GAP_US", 500UL));
+    int commaIdx = chStr.indexOf(',');
+    int ch0 = parseAnalogPin(commaIdx < 0 ? chStr : chStr.substring(0, commaIdx));
+    int ch1 = commaIdx < 0 ? -1 : parseAnalogPin(chStr.substring(commaIdx + 1));
+    doSample(ch0, ch1, sCount, sGapUs);
+    return;
+  }
+
+  // ----------------------------------------------------------
+  // READ_ADC: single voltage reading from one analog pin
+  // Usage: READ_ADC CH=A0   → reply: ADC_VALUE=512
+  // ----------------------------------------------------------
+  if (line.startsWith(F("READ_ADC"))) {
+    int pin = parseAnalogPin(getValue(line, "CH", "A0"));
+    int value = analogRead(pin);
+    Serial.print(F("ADC_VALUE="));
+    Serial.println(value);
+    return;
+  }
+
+  // ----------------------------------------------------------
+  // SET_VOLTAGE: PWM-based DC bias output (needs RC low-pass filter)
+  // Usage: SET_VOLTAGE PIN=5 DUTY=127   (duty 0-255, 127 ≈ 2.5 V)
+  // Connect R=1kΩ + C=100µF between the pin and your circuit.
+  // ----------------------------------------------------------
+  if (line.startsWith(F("SET_VOLTAGE"))) {
+    int vPin = constrain(getLong(line, "PIN", 5), 3, 11);
+    int duty = constrain(getLong(line, "DUTY", 0), 0, 255);
+    pinMode(vPin, OUTPUT);
+    analogWrite(vPin, duty);
+    Serial.println(F("ACK SET_VOLTAGE"));
+    return;
+  }
+
   Serial.println(F("ERR UNKNOWN_COMMAND"));
+}
+
+// ----------------------------------------------------------
+// Convert string like "A0".."A5" to Arduino analog pin number
+// ----------------------------------------------------------
+int parseAnalogPin(String s) {
+  s.trim();
+  if (s == "A0" || s == "0") return A0;
+  if (s == "A1" || s == "1") return A1;
+  if (s == "A2" || s == "2") return A2;
+  if (s == "A3" || s == "3") return A3;
+  if (s == "A4" || s == "4") return A4;
+  if (s == "A5" || s == "5") return A5;
+  return A0;
+}
+
+// ----------------------------------------------------------
+// Stream ADC samples over serial.
+// Timing note: gap_us includes sample + serial send time.
+// Below ~500µs gaps, actual gap is dominated by serial TX time.
+// ----------------------------------------------------------
+void doSample(int ch0, int ch1, int count, unsigned long gapUs) {
+  bool dual = (ch1 >= 0);
+  Serial.print(F("SAMPLE_START COUNT="));
+  Serial.print(count);
+  Serial.print(F(" GAP_US="));
+  Serial.println(gapUs);
+
+  for (int i = 0; i < count; i++) {
+    unsigned long tStart = micros();
+    int v0 = analogRead(ch0);
+    Serial.print(v0);
+    if (dual) {
+      int v1 = analogRead(ch1);
+      Serial.print(',');
+      Serial.print(v1);
+    }
+    Serial.print('\n');
+    unsigned long elapsed = micros() - tStart;
+    if (elapsed < gapUs) {
+      delayMicroseconds(gapUs - elapsed);
+    }
+  }
+  Serial.println(F("SAMPLE_END"));
 }
 
 void startPulse() {

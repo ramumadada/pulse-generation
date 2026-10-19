@@ -1,44 +1,48 @@
-"""
-SEELab acquisition module for the universal instrumentation platform.
+"""Arduino ADC acquisition module.
 
-This module keeps acquisition separate from GUI plotting.  It supports A1/A2
-capture, differential calculation, rolling buffering, and measurement helpers.
-Arduino remains responsible for pulse timing.
+WHY CHANGED: the original module used the SEELab (eyes17) device for ADC
+capture via device.capture2() and device.capture1(). SEELab has been removed
+from the project. All acquisition now goes through the Arduino's built-in
+10-bit ADC (A0 = channel 1, A1 = channel 2) via the SAMPLE serial command.
+
+Arduino ADC limits:
+  - Resolution: 10-bit (0–1023, maps to 0–5 V with default 5 V reference)
+  - Max reliable sample rate: ~2 kHz (gap_us ≥ 500 µs) when streaming over serial
+  - For faster sampling consider an external SPI ADC (ADS1248, MCP3208)
 """
 
 from __future__ import annotations
 
 from collections import deque
 from dataclasses import dataclass, field
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional
 
 import numpy as np
+
+from arduino_serial_module import ArduinoSampleConfig
+
+ADC_VREF_V = 5.0     # Arduino Vcc reference voltage
+ADC_BITS   = 1023.0  # 10-bit max
 
 
 @dataclass
 class AcquisitionConfig:
-    samples: int = 1200
-    time_gap_us: int = 4
-    channel_1: str = "A1"
-    channel_2: str = "A2"
-    max_samples: int = 5000
+    samples: int = 300
+    time_gap_us: int = 500   # must be >= 100; below ~500 serial TX dominates timing
+    channel_0: str = "A0"    # maps to oscilloscope channel 1 (was SEELab A1)
+    channel_1: str = "A1"    # maps to oscilloscope channel 2 (was SEELab A2)
+    max_samples: int = 500   # Arduino firmware hard limit
 
 
 @dataclass
 class AcquisitionFrame:
-    time: np.ndarray
+    time: np.ndarray          # milliseconds
     channels: Dict[str, np.ndarray]
     differential: np.ndarray = field(default_factory=lambda: np.array([]))
 
 
 class AcquisitionBuffer:
-    """Rolling frame buffer.
-
-    WHY CHANGED: the original used list.pop(0) to evict old frames, which
-    is O(n) — it shifts every remaining element. At 20 fps with 100 frames
-    this is 2 000 element copies per second, growing linearly with buffer size.
-    collections.deque with maxlen drops the oldest frame automatically in O(1).
-    """
+    """Rolling frame buffer — O(1) eviction via deque."""
 
     def __init__(self, max_frames: int = 100):
         self.max_frames = max(1, int(max_frames))
@@ -48,78 +52,94 @@ class AcquisitionBuffer:
         self.frames.append(frame)
 
     def latest(self) -> Optional[AcquisitionFrame]:
-        if not self.frames:
-            return None
-        return self.frames[-1]
+        return self.frames[-1] if self.frames else None
 
     def clear(self):
         self.frames.clear()
 
 
-def clamp_samples(samples: int, max_samples: int = 5000) -> int:
+def clamp_samples(samples: int, max_samples: int = 500) -> int:
     try:
         return max(16, min(int(samples), int(max_samples)))
     except Exception:
-        return 1200
+        return 300
 
 
-def capture_a1_a2(device, config: Optional[AcquisitionConfig] = None) -> Optional[AcquisitionFrame]:
+def _adc_to_volts(raw: int) -> float:
+    return float(raw) / ADC_BITS * ADC_VREF_V
+
+
+def capture_a1_a2(arduino, config: Optional[AcquisitionConfig] = None) -> Optional[AcquisitionFrame]:
+    """Capture dual-channel ADC from Arduino A0 (ch1) and A1 (ch2).
+
+    Replaces the SEELab eyes17 device.capture2() call. Sends a SAMPLE command
+    to the Arduino and reads back the streamed CSV data over serial.
     """
-    Capture synchronized A1/A2 data using eyes17 capture2.
-
-    eyes17 capture2 returns: x1, y1, x2, y2.
-    """
-
     config = config or AcquisitionConfig()
-
     try:
-        samples = clamp_samples(config.samples, config.max_samples)
-        time_gap_us = max(1, int(config.time_gap_us))
+        count = clamp_samples(config.samples, config.max_samples)
+        gap_us = max(100, int(config.time_gap_us))
 
-        result = device.capture2(samples, time_gap_us)
-        if result is None or len(result) < 4:
+        sample_cfg = ArduinoSampleConfig(
+            channel_0=config.channel_0,
+            channel_1=config.channel_1,
+            count=count,
+            gap_us=gap_us,
+            timeout_s=count * gap_us / 1_000_000.0 * 4 + 5.0,
+        )
+
+        if not arduino.request_sample(sample_cfg):
             return None
 
-        x1, y1, _x2, y2 = result
-        time_axis = np.asarray(x1, dtype=float)
-        a1 = np.asarray(y1, dtype=float)
-        a2 = np.asarray(y2, dtype=float)
-
-        count = min(len(time_axis), len(a1), len(a2))
-        if count < 2:
+        rows = arduino.read_sample_data(count, timeout_s=sample_cfg.timeout_s)
+        if len(rows) < 2:
             return None
 
-        time_axis = time_axis[:count]
-        a1 = a1[:count]
-        a2 = a2[:count]
+        actual = len(rows)
+        time_axis = np.arange(actual) * gap_us / 1000.0   # milliseconds
+        ch0 = np.array([_adc_to_volts(r[0]) for r in rows])
+        ch1 = np.array([_adc_to_volts(r[1]) if len(r) > 1 else 0.0 for r in rows])
 
         return AcquisitionFrame(
             time=time_axis,
-            channels={
-                config.channel_1: a1,
-                config.channel_2: a2,
-            },
-            differential=a1 - a2,
+            channels={"A1": ch0, "A2": ch1},
+            differential=ch0 - ch1,
         )
 
     except Exception as exc:
-        print("Acquisition A1/A2 Error")
-        print(exc)
+        print(f"Capture A1/A2 error: {exc}")
         return None
 
 
-def capture_single_channel(device, channel: str = "A1", samples: int = 1200, time_gap_us: int = 4):
+def capture_single_channel(arduino, channel: str = "A0", samples: int = 300, time_gap_us: int = 500):
+    """Capture a single Arduino analog channel.
+
+    Replaces device.capture1(). Returns (time_ms_array, voltage_array) or (None, None).
+    """
     try:
-        safe_samples = clamp_samples(samples, 10000)
-        safe_time_gap = max(1, int(time_gap_us))
-        result = device.capture1(channel, safe_samples, safe_time_gap)
-        if result is None:
+        count = clamp_samples(samples, 500)
+        gap_us = max(100, int(time_gap_us))
+
+        cfg = ArduinoSampleConfig(
+            channel_0=channel,
+            channel_1="",
+            count=count,
+            gap_us=gap_us,
+        )
+
+        if not arduino.request_sample(cfg):
             return None, None
-        x, y = result
-        return np.asarray(x, dtype=float), np.asarray(y, dtype=float)
+
+        rows = arduino.read_sample_data(count, timeout_s=count * gap_us / 1_000_000.0 * 4 + 5.0)
+        if not rows:
+            return None, None
+
+        time_axis = np.arange(len(rows)) * gap_us / 1000.0
+        voltages = np.array([_adc_to_volts(r[0]) for r in rows])
+        return time_axis, voltages
+
     except Exception as exc:
-        print("Single Channel Acquisition Error")
-        print(exc)
+        print(f"Single channel capture error: {exc}")
         return None, None
 
 
@@ -136,17 +156,10 @@ def calculate_measurements(time_axis, voltage):
         mean = float(np.mean(y))
         frequency = estimate_frequency(x, y)
 
-        return {
-            "vpp": vpp,
-            "rms": rms,
-            "peak": peak,
-            "mean": mean,
-            "frequency": frequency,
-        }
+        return {"vpp": vpp, "rms": rms, "peak": peak, "mean": mean, "frequency": frequency}
 
     except Exception as exc:
-        print("Measurement Calculation Error")
-        print(exc)
+        print(f"Measurement error: {exc}")
         return {}
 
 
@@ -167,11 +180,10 @@ def estimate_frequency(time_axis, voltage) -> float:
         if len(periods) == 0:
             return 0.0
 
-        period_seconds = np.median(periods) * 1e-3
-        if period_seconds <= 0:
+        period_ms = float(np.median(periods))
+        if period_ms <= 0:
             return 0.0
-
-        return float(1.0 / period_seconds)
+        return 1000.0 / period_ms   # ms → Hz
 
     except Exception:
         return 0.0
@@ -179,9 +191,8 @@ def estimate_frequency(time_axis, voltage) -> float:
 
 def calculate_current_from_sense(sense_voltage, sense_resistor_ohm: float = 100.0):
     try:
-        safe_resistor = max(0.001, float(sense_resistor_ohm))
-        return np.asarray(sense_voltage, dtype=float) / safe_resistor
+        safe_r = max(0.001, float(sense_resistor_ohm))
+        return np.asarray(sense_voltage, dtype=float) / safe_r
     except Exception as exc:
-        print("Current Calculation Error")
-        print(exc)
+        print(f"Current calculation error: {exc}")
         return np.array([])

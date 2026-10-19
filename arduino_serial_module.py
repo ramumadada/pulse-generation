@@ -37,6 +37,16 @@ class ArduinoPWMConfig:
 
 
 @dataclass
+class ArduinoSampleConfig:
+    """Configuration for Arduino ADC capture via the SAMPLE command."""
+    channel_0: str = "A0"
+    channel_1: str = "A1"        # set to "" for single-channel capture
+    count: int = 300              # max 500 (Arduino SRAM limit)
+    gap_us: int = 500             # min 100 µs; below ~500 µs serial TX dominates
+    timeout_s: float = 10.0
+
+
+@dataclass
 class ArduinoFastBurstConfig:
     frequency_hz: float = 2_000_000.0
     duty_percent: float = 33.0
@@ -280,6 +290,83 @@ class ArduinoSerialController:
 
     def stop_fast_burst(self) -> bool:
         return self.send_command("STOP_FAST_BURST")
+
+    # ----------------------------------------------------------
+    # ADC acquisition — replaces SEELab eyes17 capture functions
+    # ----------------------------------------------------------
+
+    def request_sample(self, config: ArduinoSampleConfig) -> bool:
+        """Send SAMPLE command. Call read_sample_data() immediately after."""
+        ch = f"{config.channel_0},{config.channel_1}" if config.channel_1 else config.channel_0
+        count = max(1, min(int(config.count), 500))
+        gap = max(100, int(config.gap_us))
+        return self.send_command(f"SAMPLE CH={ch} COUNT={count} GAP_US={gap}")
+
+    def read_sample_data(self, count: int, timeout_s: float = 10.0) -> list:
+        """Read streamed ADC rows after request_sample().
+
+        Returns a list of [v0] or [v0, v1] integer lists (raw 10-bit ADC values).
+        Convert to volts: voltage = value / 1023.0 * 5.0
+        """
+        rows = []
+        header_seen = False
+        deadline = time.monotonic() + timeout_s
+        try:
+            while time.monotonic() < deadline:
+                raw = self.serial_handle.readline()
+                if not raw:
+                    continue
+                line = raw.decode("utf-8", errors="replace").strip()
+                if not line:
+                    continue
+                self.last_line = line
+                if line.startswith("SAMPLE_START"):
+                    header_seen = True
+                    continue
+                if line == "SAMPLE_END":
+                    break
+                if header_seen:
+                    try:
+                        rows.append([int(v) for v in line.split(",")])
+                    except ValueError:
+                        pass
+        except Exception as exc:
+            self.last_error = str(exc)
+            print(f"Sample read error: {exc}")
+        return rows
+
+    def read_adc_voltage(self, channel: str = "A0", vref_v: float = 5.0) -> float | None:
+        """Single-shot ADC read. Returns voltage in volts, or None on failure.
+
+        Replaces eyes17 device.get_voltage(channel).
+        """
+        try:
+            if not self.send_command(f"READ_ADC CH={channel}"):
+                return None
+            deadline = time.monotonic() + 1.0
+            while time.monotonic() < deadline:
+                raw = self.serial_handle.readline()
+                if not raw:
+                    continue
+                line = raw.decode("utf-8", errors="replace").strip()
+                if line.startswith("ADC_VALUE="):
+                    adc = int(line.split("=")[1])
+                    return float(adc) / 1023.0 * vref_v
+        except Exception as exc:
+            self.last_error = str(exc)
+            print(f"ADC read error: {exc}")
+        return None
+
+    def set_voltage_pwm(self, pin: int, voltage_v: float, vref_v: float = 5.0) -> bool:
+        """Set a PWM pin to output an approximate DC voltage.
+
+        Replaces eyes17 device.set_pv1() and device.set_pv2().
+        Requires an external RC low-pass filter on the pin:
+          R = 1 kΩ,  C = 100 µF  (cutoff ≈ 1.6 Hz — very smooth DC)
+        Voltage range: 0 to vref_v (default 5 V).
+        """
+        duty = int(max(0, min(255, round(voltage_v / vref_v * 255))))
+        return self.send_command(f"SET_VOLTAGE PIN={pin} DUTY={duty}")
 
 
 def list_serial_ports() -> Dict[str, str]:
