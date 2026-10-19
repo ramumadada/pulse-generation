@@ -6,8 +6,6 @@ import sys
 
 from PyQt5.QtWidgets import QApplication
 
-app = QApplication(sys.argv)
-
 # ==========================================================
 # IMPORTS
 # ==========================================================
@@ -41,38 +39,6 @@ from PyQt5.QtWidgets import (
 )
 
 from PyQt5.QtCore import Qt, QTimer
-
-# ==========================================================
-# IMPORT EYES17
-# ==========================================================
-
-try:
-
-    import eyes17.eyes
-
-except Exception as e:
-
-    print("eyes17 Import Error")
-    print(e)
-
-    sys.exit()
-
-# ==========================================================
-# CONNECT DEVICE
-# ==========================================================
-
-try:
-
-    device = eyes17.eyes.open()
-
-    print("SEELab Connected Successfully")
-
-except Exception as e:
-
-    print("SEELab Connection Error")
-    print(e)
-
-    sys.exit()
 
 # ==========================================================
 # SEELAB OUTPUT LIMITS
@@ -115,9 +81,16 @@ PIN_LIMITS = {
 
 class UltraScope(QWidget):
 
-    def __init__(self):
-
+    def __init__(self, device):
+        """
+        WHY CHANGED: device (the eyes17 SEELab object) was a module-level
+        global, which meant importing this file triggered hardware connection
+        and sys.exit() on failure. Passing device as a parameter keeps
+        hardware setup in __main__ where it belongs and allows the class to
+        be instantiated in tests without real hardware.
+        """
         super().__init__()
+        self.device = device
 
         self.setWindowTitle(
             "PROFESSIONAL HYBRID ELECTRONIC INSTRUMENTATION PLATFORM"
@@ -1879,7 +1852,7 @@ class UltraScope(QWidget):
             self.incremental_running = False
 
             try:
-                device.set_pv1(0)
+                self.device.set_pv1(0)
             except Exception:
                 pass
 
@@ -1914,7 +1887,7 @@ class UltraScope(QWidget):
                 self.incremental_running = False
 
                 try:
-                    device.set_pv1(0)
+                    self.device.set_pv1(0)
                 except Exception:
                     pass
 
@@ -1934,7 +1907,7 @@ class UltraScope(QWidget):
 
             amplitude = self.incremental_sequence[self.incremental_index]
 
-            device.set_pv1(
+            self.device.set_pv1(
                 amplitude
             )
 
@@ -2056,15 +2029,15 @@ class UltraScope(QWidget):
 
             if pin == "SQ1":
 
-                device.set_sqr1(freq, duty)
+                self.device.set_sqr1(freq, duty)
 
             elif pin == "SQ2":
 
-                device.set_sqr2(freq, duty)
+                self.device.set_sqr2(freq, duty)
 
             elif pin == "WG":
 
-                device.set_wave(freq)
+                self.device.set_wave(freq)
 
         except Exception as e:
 
@@ -2081,11 +2054,11 @@ class UltraScope(QWidget):
             pv1_voltage = self.pv1_slider.value() / 1000
             pv2_voltage = self.pv2_slider.value() / 1000
 
-            device.set_pv1(
+            self.device.set_pv1(
                 pv1_voltage
             )
 
-            device.set_pv2(
+            self.device.set_pv2(
                 pv2_voltage
             )
 
@@ -2109,7 +2082,7 @@ class UltraScope(QWidget):
 
         trigger_module.update_scope_engine(
             self,
-            device
+            self.device
         )
 
     # ======================================================
@@ -2231,9 +2204,19 @@ class UltraScope(QWidget):
 # ==========================================================
 
 if __name__ == "__main__":
+    # WHY: QApplication and hardware connection live here so that importing
+    # this module from a test or notebook does not immediately try to connect
+    # hardware and call sys.exit() on failure.
+    app = QApplication(sys.argv)
 
-    window = UltraScope()
+    try:
+        import eyes17.eyes
+        device = eyes17.eyes.open()
+        print("SEELab Connected Successfully")
+    except Exception as e:
+        print(f"SEELab Connection Error: {e}")
+        sys.exit(1)
 
+    window = UltraScope(device)
     window.showMaximized()
-
     sys.exit(app.exec_())

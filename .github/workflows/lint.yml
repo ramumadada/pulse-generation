@@ -1,0 +1,28 @@
+# Lint check on every push and pull request.
+# WHY: catches import errors, undefined names, and bare except blocks
+# automatically before they reach the main branch — no manual review needed
+# for style issues.
+
+name: Lint
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+    branches: ["main"]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ruff
+        run: pip install ruff==0.4.4
+
+      - name: Run ruff
+        run: ruff check .

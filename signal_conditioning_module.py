@@ -8,6 +8,7 @@ of GUI code so oscilloscope, FFT, IV, and memristor modules can share it.
 from __future__ import annotations
 
 import numpy as np
+from scipy.signal import butter, lfilter, savgol_filter
 
 
 def sanitize_waveform(y):
@@ -59,14 +60,20 @@ def baseline_correction(y, baseline_fraction=0.08):
 
 
 def moving_average(y, window_size=5):
+    """Smooth signal with Savitzky-Golay filter.
+
+    WHY CHANGED: was np.convolve(..., mode='same') which zero-pads both ends,
+    creating a false ramp artefact over the first and last window_size//2
+    samples. savgol_filter uses polynomial fitting and handles edges correctly.
+    """
     try:
         data = sanitize_waveform(y)
-        window = max(1, int(window_size))
-        if window <= 1 or len(data) < window:
+        w = max(3, int(window_size))
+        if w % 2 == 0:
+            w += 1
+        if len(data) < w:
             return data
-
-        kernel = np.ones(window) / window
-        return np.convolve(data, kernel, mode="same")
+        return savgol_filter(data, window_length=w, polyorder=2)
 
     except Exception as exc:
         print("Moving Average Error")
@@ -75,23 +82,24 @@ def moving_average(y, window_size=5):
 
 
 def low_pass_filter(y, sample_rate_hz, cutoff_hz):
+    """Apply a first-order Butterworth low-pass filter.
+
+    WHY CHANGED: the original implementation used a Python for-loop over every
+    sample to compute the RC filter. At 1200 samples refreshing at 20 fps this
+    ran ~24 000 Python iterations per second in the GUI thread. scipy.signal
+    lfilter does the same in C — orders of magnitude faster — and handles
+    initial conditions properly with no warm-up artefact.
+    """
     try:
         data = sanitize_waveform(y)
-        if len(data) < 2:
+        if len(data) < 4:
             return data
 
         sample_rate = max(1.0, float(sample_rate_hz))
-        cutoff = max(0.001, float(cutoff_hz))
-        dt = 1.0 / sample_rate
-        rc = 1.0 / (2.0 * np.pi * cutoff)
-        alpha = dt / (rc + dt)
-
-        output = np.empty_like(data)
-        output[0] = data[0]
-        for index in range(1, len(data)):
-            output[index] = output[index - 1] + alpha * (data[index] - output[index - 1])
-
-        return output
+        cutoff = max(0.001, min(float(cutoff_hz), sample_rate * 0.49))
+        nyquist = sample_rate / 2.0
+        b, a = butter(1, cutoff / nyquist, btype="low")
+        return lfilter(b, a, data)
 
     except Exception as exc:
         print("Low Pass Filter Error")

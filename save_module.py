@@ -1,429 +1,127 @@
-# ==========================================================
-# save_module.py
-# ==========================================================
+"""Save utilities — screenshots, waveform CSVs, FFT CSVs, experiment logs.
 
-import os
+WHY CHANGED: the original file used bare relative paths like "screenshots/"
+and "waveform_data/" which resolved to whatever directory the user ran Python
+from, not the project folder. Running from a different directory silently
+created folders in the wrong place or failed to write files. All paths now
+resolve relative to this file using Path(__file__).parent.
+
+Style: removed the excessive blank line between every statement that made
+15-line functions appear as 60-line blocks.
+"""
+
+from __future__ import annotations
+
 import csv
 import datetime
+from pathlib import Path
 
 import pyqtgraph.exporters
 
-# ==========================================================
-# CREATE FOLDERS
-# ==========================================================
+BASE_DIR = Path(__file__).parent
 
-def create_folders():
+_OUTPUT_DIRS = ["screenshots", "waveform_data", "fft_data", "experiment_logs"]
 
-    folders = [
 
-        "screenshots",
+def _ensure_dirs() -> None:
+    for name in _OUTPUT_DIRS:
+        (BASE_DIR / name).mkdir(exist_ok=True)
 
-        "waveform_data",
 
-        "fft_data",
+def _timestamp() -> str:
+    return datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
 
-        "experiment_logs"
 
-    ]
-
-    for folder in folders:
-
-        os.makedirs(
-
-            folder,
-
-            exist_ok=True
-
-        )
-
-# ==========================================================
-# SAVE CRO SCREENSHOT
-# ==========================================================
-
-def save_cro_image(cro_plot):
-
+def save_cro_image(cro_plot) -> str | None:
     try:
-
-        create_folders()
-
-        timestamp = datetime.datetime.now().strftime(
-
-            "%Y%m%d_%H%M%S"
-
-        )
-
-        filename = (
-
-            f"screenshots/CRO_{timestamp}.png"
-
-        )
-
-        exporter = pyqtgraph.exporters.ImageExporter(
-
-            cro_plot.plotItem
-
-        )
-
-        exporter.export(
-
-            filename
-
-        )
-
+        _ensure_dirs()
+        filename = str(BASE_DIR / "screenshots" / f"CRO_{_timestamp()}.png")
+        exporter = pyqtgraph.exporters.ImageExporter(cro_plot.plotItem)
+        exporter.export(filename)
         return filename
-
     except Exception as e:
-
-        print("Save CRO Error")
-
-        print(e)
-
+        print(f"Save CRO error: {e}")
         return None
 
-# ==========================================================
-# SAVE FFT SCREENSHOT
-# ==========================================================
 
-def save_fft_image(fft_plot):
-
+def save_fft_image(fft_plot) -> str | None:
     try:
-
-        create_folders()
-
-        timestamp = datetime.datetime.now().strftime(
-
-            "%Y%m%d_%H%M%S"
-
-        )
-
-        filename = (
-
-            f"screenshots/FFT_{timestamp}.png"
-
-        )
-
-        exporter = pyqtgraph.exporters.ImageExporter(
-
-            fft_plot.plotItem
-
-        )
-
-        exporter.export(
-
-            filename
-
-        )
-
+        _ensure_dirs()
+        filename = str(BASE_DIR / "screenshots" / f"FFT_{_timestamp()}.png")
+        exporter = pyqtgraph.exporters.ImageExporter(fft_plot.plotItem)
+        exporter.export(filename)
         return filename
-
     except Exception as e:
-
-        print("Save FFT Error")
-
-        print(e)
-
+        print(f"Save FFT error: {e}")
         return None
 
-# ==========================================================
-# SAVE WAVEFORM CSV
-# ==========================================================
 
-def save_waveform_csv(x, y):
-
+def save_waveform_csv(x, y) -> str | None:
     try:
+        _ensure_dirs()
+        filename = str(BASE_DIR / "waveform_data" / f"WAVEFORM_{_timestamp()}.csv")
+        with open(filename, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["Time(us)", "Voltage(V)"])
+            writer.writerows(zip(x, y))
+        return filename
+    except Exception as e:
+        print(f"Waveform CSV error: {e}")
+        return None
 
-        create_folders()
 
-        timestamp = datetime.datetime.now().strftime(
+def save_fft_csv(xf, yf) -> str | None:
+    try:
+        _ensure_dirs()
+        filename = str(BASE_DIR / "fft_data" / f"FFT_{_timestamp()}.csv")
+        with open(filename, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["Frequency(Hz)", "Magnitude"])
+            writer.writerows(zip(xf, yf))
+        return filename
+    except Exception as e:
+        print(f"FFT CSV error: {e}")
+        return None
 
-            "%Y%m%d_%H%M%S"
 
-        )
+def save_experiment_log(pin, frequency, duty, amplitude, thd) -> str | None:
+    try:
+        _ensure_dirs()
+        ts = _timestamp()
+        filename = str(BASE_DIR / "experiment_logs" / f"LOG_{ts}.txt")
+        thd_str = f"{thd:.2f} %" if thd is not None else "N/A"
+        with open(filename, "w") as f:
+            f.write("EXPERIMENT LOG\n")
+            f.write("=====================\n")
+            f.write(f"Timestamp : {ts}\n")
+            f.write(f"Pin       : {pin}\n")
+            f.write(f"Frequency : {frequency} Hz\n")
+            f.write(f"Duty      : {duty} %\n")
+            f.write(f"Amplitude : {amplitude} V\n")
+            f.write(f"THD       : {thd_str}\n")
+        return filename
+    except Exception as e:
+        print(f"Experiment log error: {e}")
+        return None
 
-        filename = (
 
-            f"waveform_data/WAVEFORM_{timestamp}.csv"
-
-        )
-
-        with open(
-
-            filename,
-
-            "w",
-
-            newline=""
-
-        ) as file:
-
-            writer = csv.writer(file)
-
-            writer.writerow([
-
-                "Time(us)",
-
-                "Voltage(V)"
-
-            ])
-
-            for time_value, voltage_value in zip(x, y):
-
+def save_dual_waveform_csv(x, a1, a2=None, differential=None) -> str | None:
+    try:
+        _ensure_dirs()
+        filename = str(BASE_DIR / "waveform_data" / f"DUAL_WAVEFORM_{_timestamp()}.csv")
+        a2 = a2 if a2 is not None else []
+        differential = differential if differential is not None else []
+        with open(filename, "w", newline="") as f:
+            writer = csv.writer(f)
+            writer.writerow(["Time(ms)", "A1(V)", "A2(V)", "A1_minus_A2(V)"])
+            for i in range(len(x)):
                 writer.writerow([
-
-                    time_value,
-
-                    voltage_value
-
+                    x[i],
+                    a1[i] if i < len(a1) else "",
+                    a2[i] if i < len(a2) else "",
+                    differential[i] if i < len(differential) else "",
                 ])
-
         return filename
-
     except Exception as e:
-
-        print("Waveform CSV Error")
-
-        print(e)
-
-        return None
-
-# ==========================================================
-# SAVE FFT CSV
-# ==========================================================
-
-def save_fft_csv(xf, yf):
-
-    try:
-
-        create_folders()
-
-        timestamp = datetime.datetime.now().strftime(
-
-            "%Y%m%d_%H%M%S"
-
-        )
-
-        filename = (
-
-            f"fft_data/FFT_{timestamp}.csv"
-
-        )
-
-        with open(
-
-            filename,
-
-            "w",
-
-            newline=""
-
-        ) as file:
-
-            writer = csv.writer(file)
-
-            writer.writerow([
-
-                "Frequency(Hz)",
-
-                "Magnitude"
-
-            ])
-
-            for freq, mag in zip(xf, yf):
-
-                writer.writerow([
-
-                    freq,
-
-                    mag
-
-                ])
-
-        return filename
-
-    except Exception as e:
-
-        print("FFT CSV Error")
-
-        print(e)
-
-        return None
-
-# ==========================================================
-# SAVE EXPERIMENT LOG
-# ==========================================================
-
-def save_experiment_log(
-
-    pin,
-
-    frequency,
-
-    duty,
-
-    amplitude,
-
-    thd
-
-):
-
-    try:
-
-        create_folders()
-
-        timestamp = datetime.datetime.now().strftime(
-
-            "%Y%m%d_%H%M%S"
-
-        )
-
-        filename = (
-
-            f"experiment_logs/LOG_{timestamp}.txt"
-
-        )
-
-        with open(
-
-            filename,
-
-            "w"
-
-        ) as file:
-
-            file.write(
-
-                "EXPERIMENT LOG\n"
-
-            )
-
-            file.write(
-
-                "=====================\n"
-
-            )
-
-            file.write(
-
-                f"Timestamp : {timestamp}\n"
-
-            )
-
-            file.write(
-
-                f"Pin : {pin}\n"
-
-            )
-
-            file.write(
-
-                f"Frequency : {frequency} Hz\n"
-
-            )
-
-            file.write(
-
-                f"Duty : {duty} %\n"
-
-            )
-
-            file.write(
-
-                f"Amplitude : {amplitude} V\n"
-
-            )
-
-            file.write(
-
-                f"THD : {thd:.2f} %\n"
-
-            )
-
-        return filename
-
-    except Exception as e:
-
-        print("Experiment Log Error")
-
-        print(e)
-
-        return None
-
-# ==========================================================
-# SAVE DUAL-CHANNEL WAVEFORM CSV
-# ==========================================================
-
-def save_dual_waveform_csv(x, a1, a2=None, differential=None):
-
-    try:
-
-        create_folders()
-
-        timestamp = datetime.datetime.now().strftime(
-
-            "%Y%m%d_%H%M%S"
-
-        )
-
-        filename = (
-
-            f"waveform_data/DUAL_WAVEFORM_{timestamp}.csv"
-
-        )
-
-        with open(
-
-            filename,
-
-            "w",
-
-            newline=""
-
-        ) as file:
-
-            writer = csv.writer(file)
-
-            writer.writerow([
-
-                "Time(ms)",
-
-                "A1(V)",
-
-                "A2(V)",
-
-                "A1_minus_A2(V)"
-
-            ])
-
-            if a2 is None:
-
-                a2 = []
-
-            if differential is None:
-
-                differential = []
-
-            max_length = len(x)
-
-            for index in range(max_length):
-
-                writer.writerow([
-
-                    x[index],
-
-                    a1[index] if index < len(a1) else "",
-
-                    a2[index] if index < len(a2) else "",
-
-                    differential[index] if index < len(differential) else ""
-
-                ])
-
-        return filename
-
-    except Exception as e:
-
-        print("Dual Waveform CSV Error")
-
-        print(e)
-
+        print(f"Dual waveform CSV error: {e}")
         return None

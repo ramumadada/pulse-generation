@@ -8,6 +8,7 @@ Arduino remains responsible for pulse timing.
 
 from __future__ import annotations
 
+from collections import deque
 from dataclasses import dataclass, field
 from typing import Dict, Optional, Tuple
 
@@ -31,14 +32,20 @@ class AcquisitionFrame:
 
 
 class AcquisitionBuffer:
+    """Rolling frame buffer.
+
+    WHY CHANGED: the original used list.pop(0) to evict old frames, which
+    is O(n) — it shifts every remaining element. At 20 fps with 100 frames
+    this is 2 000 element copies per second, growing linearly with buffer size.
+    collections.deque with maxlen drops the oldest frame automatically in O(1).
+    """
+
     def __init__(self, max_frames: int = 100):
         self.max_frames = max(1, int(max_frames))
-        self.frames = []
+        self.frames: deque = deque(maxlen=self.max_frames)
 
     def append(self, frame: AcquisitionFrame):
         self.frames.append(frame)
-        if len(self.frames) > self.max_frames:
-            self.frames.pop(0)
 
     def latest(self) -> Optional[AcquisitionFrame]:
         if not self.frames:

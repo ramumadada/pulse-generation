@@ -1,6 +1,16 @@
-PyQt5
-pyqtgraph
-numpy
-scipy
-pyserial
-eyes17
+# Pinned versions — tested against these on Python 3.11 / Ubuntu 22.04 WSL2
+# WHY PINNED: unpinned deps install different versions on every fresh machine.
+# A future PyQt5 or pyqtgraph minor release has previously broken oscilloscope
+# layouts; numpy API changes have broken FFT code. Pin to what you tested.
+#
+# To upgrade: pip install --upgrade <package>, test, then update the pin here.
+
+PyQt5==5.15.10
+pyqtgraph==0.13.7
+numpy==1.26.4
+scipy==1.13.1
+pyserial==3.5
+
+# eyes17 (SEELab) is NOT available on PyPI.
+# Install it manually — see HARDWARE_SETUP.md for the exact command.
+# Do NOT add it here; pip will fail with a confusing "not found" error.

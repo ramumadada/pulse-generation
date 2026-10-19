@@ -56,7 +56,11 @@ BurstConfig burstConfig = {9, 1000UL, 1000UL, 10UL, 1UL, 100UL};
 PwmConfig pwmConfig = {9, 1000.0, 50.0, 0UL};
 FastBurstConfig fastBurstConfig = {2000000UL, 33.0, 100UL, 500UL, 0UL};
 
-String commandLine;
+// WHY CHANGED: Arduino String causes heap fragmentation on UNO (2 KB SRAM).
+// Repeated concatenation in long experiment sessions leads to crashes or
+// garbled commands. A fixed-size char buffer avoids any heap allocation.
+char cmdBuf[128];
+uint8_t cmdLen = 0;
 
 bool pulseActive = false;
 bool pulseHigh = false;
@@ -86,7 +90,8 @@ unsigned long fastBurstOnUs = 50;
 
 void setup() {
   Serial.begin(115200);
-  commandLine.reserve(128);
+  cmdBuf[0] = '\0';
+  cmdLen = 0;
   pinMode(pulseConfig.pin, OUTPUT);
   digitalWrite(pulseConfig.pin, pulseConfig.idleState);
   Serial.println(F("FW PGEE_ARDUINO_PULSE_ENGINE 1.0"));
@@ -105,17 +110,20 @@ void readSerial() {
     char c = (char)Serial.read();
 
     if (c == '\n' || c == '\r') {
-      if (commandLine.length() > 0) {
-        handleCommand(commandLine);
-        commandLine = "";
+      if (cmdLen > 0) {
+        cmdBuf[cmdLen] = '\0';
+        handleCommand(String(cmdBuf));  // String created once per command, not per char
+        cmdLen = 0;
+        cmdBuf[0] = '\0';
       }
       continue;
     }
 
-    if (commandLine.length() < 120) {
-      commandLine += c;
+    if (cmdLen < 120) {
+      cmdBuf[cmdLen++] = c;
     } else {
-      commandLine = "";
+      cmdLen = 0;
+      cmdBuf[0] = '\0';
       Serial.println(F("ERR LINE_TOO_LONG"));
     }
   }

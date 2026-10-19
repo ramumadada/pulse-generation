@@ -76,14 +76,35 @@ https://drive.google.com/drive/folders/17KRl3tyDmtp5uRdixyRHKKvt-OUXEkjE
 ```text
 main_scope.py                 Main GUI Application
 arduino_pulse_engine/         Arduino Firmware
-waveform_exports/             Exported CSV Data
+waveform_data/                Exported CSV Waveform Data
+fft_data/                     Exported FFT CSV Data
 experiment_logs/              Experiment Records
+screenshots/                  Saved oscilloscope images
 ```
+
+## Installation
+
+### 1. Install Python dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 2. Install eyes17 (SEELab — not on PyPI)
+
+eyes17 must be installed separately. Download the package from the SEELab
+website or your lab's distribution and run:
+
+```bash
+pip install eyes17-<version>.whl
+```
+
+Refer to `HARDWARE_SETUP.md` for the exact version and download link.
 
 ## How to Run
 
-1. Upload the Arduino firmware.
-2. Connect Arduino UNO and SEELab.
+1. Upload the Arduino firmware from `arduino_pulse_engine/`.
+2. Connect Arduino UNO and SEELab to USB.
 3. Launch the Python application.
 
 ```bash

@@ -74,7 +74,7 @@ class ArduinoSerialController:
         self.last_command = ""
         self.connected = False
         self.ready_at = 0.0
-        self.boot_delay_seconds = 1.8
+        self.boot_timeout_seconds = 5.0  # max wait for firmware FW token
 
     def connect(self, port: Optional[str] = None, baudrate: Optional[int] = None) -> bool:
         try:
@@ -95,7 +95,7 @@ class ArduinoSerialController:
             self.serial_handle = serial.Serial(
                 self.port,
                 self.baudrate,
-                timeout=0.02,
+                timeout=0.1,
                 write_timeout=0.2,
             )
             try:
@@ -104,7 +104,7 @@ class ArduinoSerialController:
             except Exception:
                 pass
             self.connected = True
-            self.ready_at = time.monotonic() + self.boot_delay_seconds
+            self._wait_for_firmware_ready()
             return True
 
         except Exception as exc:
@@ -113,6 +113,30 @@ class ArduinoSerialController:
             print(exc)
             self.connected = False
             return False
+
+    def _wait_for_firmware_ready(self) -> None:
+        """Poll for the firmware's FW token instead of sleeping a fixed delay.
+
+        WHY CHANGED: the original code slept 1.8 s regardless of the actual
+        boot time. The Arduino firmware sends "FW PGEE_ARDUINO_PULSE_ENGINE 1.0"
+        from setup() the moment it is ready. Polling for that token makes
+        reconnection fast on quick bootloaders and reliable on slow ones.
+        Falls back to a 5 s timeout if the token never arrives (older firmware).
+        """
+        deadline = time.monotonic() + self.boot_timeout_seconds
+        while time.monotonic() < deadline:
+            try:
+                raw = self.serial_handle.readline()
+                if not raw:
+                    continue
+                line = raw.decode("utf-8", errors="replace").strip()
+                if line.startswith("FW "):
+                    self.ready_at = time.monotonic()
+                    return
+            except Exception:
+                break
+        # Firmware token not seen — set ready now as a safe fallback
+        self.ready_at = time.monotonic()
 
     def disconnect(self):
         try:
